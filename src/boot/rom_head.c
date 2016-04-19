@@ -1,7 +1,8 @@
 #include "types.h"
 #include "rom_head.h"
 
-const struct {
+const struct
+{
     char console[16];               /* Console Name (16) */
     char copyright[16];             /* Copyright Information (16) */
     char title_local[48];           /* Domestic Name (48) */
