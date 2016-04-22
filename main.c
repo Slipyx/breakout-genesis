@@ -43,25 +43,35 @@ s8 padVelY = 0;
 u16 brik0idx = 0;
 u16 brik1idx = 0;
 // [y][x]
-u8 brik_field[7][9] = {
+u8 brik_field[15][9] = {
 	{1,1,1,1,1,1,1,1,1},
 	{1,0,0,0,0,2,2,0,1},
 	{1,0,0,1,1,1,1,1,1},
 	{1,0,1,1,1,1,1,1,1},
 	{1,0,2,2,2,1,1,2,1},
 	{0,0,2,2,2,0,0,2,1},
-	{0,1,1,1,1,0,0,1,1}
+	{0,1,1,1,1,0,0,1,1},
+	{1,1,1,1,1,1,1,1,1},
+	{1,0,0,0,0,2,2,0,1},
+	{1,0,0,0,0,1,1,1,1},
+	{1,0,0,0,0,1,1,1,1},
+	{1,0,2,2,2,1,1,2,1},
+	{0,0,2,2,2,0,0,2,1},
+	{0,0,1,1,1,0,0,1,1},
+	{1,1,1,1,1,1,1,1,1}
 };
 const u8 brik_field_posx = 13; // x position in tiles where to begin play field
+u8 briks_left = 0;
 
 // gameplay
 u8 waitLaunch = 1;
 u16 score = 0;
-u8 lives = 3;
+u8 lives = 9;
 s8 noBrikHit = 0;
 
 void UpdateBrikField( void );
 void RemoveBrik( u8 x, u8 y );
+void RefreshLivesDisplay( void );
 
 // sets ball angle and updates dir vec
 void SetBallAng( u16 angle ) {
@@ -92,7 +102,7 @@ void SaveScore( void ) {
 
 void PrepLaunch( void ) {
 	// reset position
-	spr0y = intToFix16( screenHeight - 40 );
+	spr0y = intToFix16( screenHeight - 8 - (SPR_PAD_H * 8) - (SPR0_H * 8) );
 	spr0x = intToFix16( 152 );
 	spr0.posx = fix16ToInt( spr0x );
 	spr0.posy = fix16ToInt( spr0y );
@@ -122,8 +132,8 @@ void HandleJoyInput( u16 joy, u16 changed, u16 state ) {
 			waitLaunch = 0;
 			spr0vel = 3;
 			VDP_clearTextLine( screenHeight / 8 - 2 );
-			//RemoveBrik( 11, 2 );
 			--lives;
+			RefreshLivesDisplay();
 		}
 
 		// pressed
@@ -169,6 +179,7 @@ u16 ReflectAngle( u16 angle, u16 normal ) {
 void UpdateBrikField( void ) {
 	for ( u8 y = 0; y < sizeof (brik_field) / sizeof (brik_field[0]); ++y ) {
 		for ( u8 x = 0; x < sizeof (brik_field[y]); ++x ) {
+			if ( brik_field[y][x] > 0 ) ++briks_left;
 			if ( brik_field[y][x] == 1 )
 				DrawBGTile( APLAN, brik0idx, SPR_BRIK_W, SPR_BRIK_H, brik_field_posx+(x*SPR_BRIK_W), y*SPR_BRIK_H );
 			else if ( brik_field[y][x] == 2 )
@@ -181,6 +192,7 @@ void UpdateBrikField( void ) {
 // set brik array data to 0 and draw transparent tile in spot
 void RemoveBrik( u8 x, u8 y ) {
 	brik_field[y][x] = 0;
+	--briks_left;
 	DrawBGTile( APLAN, 0x0580, SPR_BRIK_W, SPR_BRIK_H, brik_field_posx+(x*SPR_BRIK_W), y*SPR_BRIK_H );
 }
 
@@ -193,15 +205,15 @@ void DoBrikCollision( void ) {
 		for ( u8 x = 0; x < sizeof (brik_field[y]); ++x ) {
 			u16 bx = (brik_field_posx * 8) + (x * bw);
 			if ( brik_field[y][x] > 0 ) {
-				if ( !(bx > spr0.posx + 16
+				if ( !(bx > spr0.posx + (SPR0_W*8)
 					|| bx + bw < spr0.posx
-					|| by > spr0.posy + 16
+					|| by > spr0.posy + (SPR0_H*8)
 					|| by + bh < spr0.posy) ) {
 					RemoveBrik( x, y );
 					u16 colx = (spr0.posx > bx) ? spr0.posx : bx;
 					u16 coly = (spr0.posy > by) ? spr0.posy : by;
-					u16 colx2 = (spr0.posx + 16) < (bx + bw) ? (spr0.posx + 16) : (bx + bw);
-					u16 coly2 = (spr0.posy + 16) < (by + bh) ? (spr0.posy + 16) : (by + bh);
+					u16 colx2 = (spr0.posx + (SPR0_W * 8)) < (bx + bw) ? (spr0.posx + (SPR0_W * 8)) : (bx + bw);
+					u16 coly2 = (spr0.posy + (SPR0_H * 8)) < (by + bh) ? (spr0.posy + (SPR0_H * 8)) : (by + bh);
 					u16 colw = colx2 - colx;
 					u16 colh = coly2 - coly;
 					if ( colw > colh ) {
@@ -232,6 +244,39 @@ void DoBrikCollision( void ) {
 	}
 }
 
+void RefreshLivesDisplay( void ) {
+	VDP_clearText( 3, 5, 9 );
+	for ( u8 i = 0; i < lives; ++i )
+		DrawBGTile( APLAN, 17, 1, 1, 11-i, 5 );
+}
+
+void VIntCallback( void ) {
+	if ( waitLaunch == 0 ) {
+		spr0x = fix16Add( spr0x, fix16Mul( intToFix16( spr0vel ), spr0dir[0] ) );
+		spr0.posx = fix16ToInt( spr0x );
+		spr0y = fix16Add( spr0y, fix16Mul( intToFix16( spr0vel ), spr0dir[1] ) );
+		spr0.posy = fix16ToInt( spr0y );
+
+		static u8 rottimer = 0;
+		++rottimer;
+		if ( rottimer > 7 ) {
+			if ( spr0ang > 768 || spr0ang < 256 ) spr0rotdir = 1;
+			else {
+				if ( spr0rot == 0 ) spr0rot = 4;
+				spr0rotdir = -1;
+			}
+			spr0rot = (spr0rot+spr0rotdir) % 4;
+			UpdateBallRot();
+			rottimer = 0;
+		}
+	}
+
+	VDP_setSpriteP( 0, &spr0 );
+	VDP_setSpriteP( 1, &spr_pad_left );
+	VDP_setSpriteP( 2, &spr_pad_right );
+	VDP_updateSprites();
+}
+
 int main( void ) {
 	// mark sram as valid data
 	SRAM_enable();
@@ -248,7 +293,7 @@ int main( void ) {
 	JOY_init();
 	JOY_setEventHandler( HandleJoyInput );
 
-	if ( ROM_REGION == ROM_EUR || ROM_REGION == ROM_JAP )
+	if ( IS_PALSYSTEM )
 		VDP_setScreenHeight240();
 	else
 		VDP_setScreenHeight224();
@@ -290,21 +335,19 @@ int main( void ) {
 	// plan, idx, tw, th, xp, yp
 	//DrawBGTile( APLAN, 1, 1, 2, 5, 5 );
 	DrawBGTileFill( BPLAN, 1, 1, 1, 0, 0, brik_field_posx, screenHeight / 8 ); // info pane
-	DrawBGTileFill( BPLAN, 16, 1, 1, brik_field_posx, 0, screenWidth/8-brik_field_posx, screenHeight / 8 ); // brik field bg
+	DrawBGTileFill( BPLAN, 3, 1, 1, brik_field_posx, 0, screenWidth/8-brik_field_posx, screenHeight / 8 ); // brik field bg
 	UpdateBrikField();
 
 	// sprites
 	//VDP_setSprite( 0, 156, 108, SPRITE_SIZE( 2, 1 ), TILE_ATTR_FULL( PAL0, 0, 0, 0, 1 ), 0 );
 
-	spr0.posy = screenHeight - 40;
-	spr_pad_left.posy = screenHeight - 24;
+	spr0.posy = screenHeight - 8 - (SPR_PAD_H * 8) - (SPR0_H * 8);
+	spr_pad_left.posy = screenHeight - 8 - (SPR_PAD_H * 8);
 	//spr_pad_right.posy = spr_pad_left.posy;
-	VDP_setSpriteP( 0, &spr0 );
-	VDP_setSpriteP( 1, &spr_pad_left );
-	VDP_setSpriteP( 2, &spr_pad_right );
 
 	// setup
 	PrepLaunch();
+	RefreshLivesDisplay();
 
 	// load save
 	if ( saveInit == TRUE ) {
@@ -319,46 +362,38 @@ int main( void ) {
 	SND_setPCM_XGM( SND_ID_PAD, snd_pad, sizeof snd_pad );
 	SND_setPCM_XGM( SND_ID_DEAD, snd_dead, sizeof snd_dead );
 
+	SYS_setVIntCallback( VIntCallback );
+
 	while ( 1 ) {
 		// logic
 		spr_pad_left.posx += (padVel * padVelM);
 		if ( padVelY != 0 ) spr_pad_left.posy += padVelY;
-		if ( spr_pad_left.posy + 16 > screenHeight ) padVelY = -2;
-		if ( spr_pad_left.posy < screenHeight - 24 ) {
-			spr_pad_left.posy = screenHeight - 24;
+		if ( spr_pad_left.posy + (SPR_PAD_H * 8) > screenHeight ) padVelY = -3;
+		if ( spr_pad_left.posy < screenHeight - 8 - SPR_PAD_H * 8 ) {
+			spr_pad_left.posy = screenHeight - 8 - SPR_PAD_H * 8;
 			padVelY = 0;
 		}
 
 		// pad bounding
-		if ( spr_pad_left.posx < brik_field_posx*8 ) spr_pad_left.posx = brik_field_posx*8;
-		if ( spr_pad_left.posx + 64 > screenWidth ) spr_pad_left.posx = screenWidth - 64;
+		if ( spr_pad_left.posx < brik_field_posx * 8 ) spr_pad_left.posx = brik_field_posx * 8;
+		if ( spr_pad_left.posx + (SPR_PAD_W * 8 * 2) > screenWidth ) spr_pad_left.posx = screenWidth - (SPR_PAD_W * 8 * 2);
 
 		// keep right half aligned
-		spr_pad_right.posx = spr_pad_left.posx + 32;
+		spr_pad_right.posx = spr_pad_left.posx + (SPR_PAD_W * 8);
 		spr_pad_right.posy = spr_pad_left.posy;
-
-		VDP_setSpriteP( 1, &spr_pad_left );
-		VDP_setSpriteP( 2, &spr_pad_right );
 
 		// death flash
 		static u8 deathFlash = 0;
 
 		if ( waitLaunch == 0 ) {
-			spr0x = fix16Add( spr0x, fix16Mul( intToFix16( spr0vel ), spr0dir[0] ) );
-			spr0.posx = fix16ToInt( spr0x );
-			spr0y = fix16Add( spr0y, fix16Mul( intToFix16( spr0vel ), spr0dir[1] ) );
-			spr0.posy = fix16ToInt( spr0y );
-
 			// left / right walls
-			if ( spr0.posx >= screenWidth - 16 && spr0dir[0] > 0 ) { // right wall
-				//spr0dir[0] = -spr0dir[0];
+			if ( spr0.posx >= screenWidth - (SPR0_W * 8) && spr0dir[0] > 0 ) { // right wall
 				SetBallAng( ReflectAngle( spr0ang, 512 ) );
 				SaveScore();
 				SND_startPlayPCM_XGM( SND_ID_WALL, 0, SOUND_PCM_CH1 );
 				++noBrikHit;
 			}
-			else if ( spr0.posx <= brik_field_posx*8 && spr0dir[0] < 0 ) { // left wall (info pane)
-				//spr0dir[0] = -spr0dir[0];
+			else if ( spr0.posx <= brik_field_posx * 8 && spr0dir[0] < 0 ) { // left wall (info pane)
 				SetBallAng( ReflectAngle( spr0ang, 0 ) );
 				SaveScore();
 				SND_startPlayPCM_XGM( SND_ID_WALL, 0, SOUND_PCM_CH1 );
@@ -366,12 +401,18 @@ int main( void ) {
 			}
 
 			// top / bottom walls
-			if ( spr0.posy >= screenHeight - 16 && spr0dir[1] > 0 ) {
+			if ( spr0.posy >= screenHeight - (SPR0_H * 8) && spr0dir[1] > 0 ) {
 				// dead
-				deathFlash = 1;
-				VDP_fadePalTo( 0, myPalDark, 7, 0 );
+				deathFlash = 8;
+				VDP_setPalette( 0, myPalDark );
 				SND_startPlayPCM_XGM( SND_ID_DEAD, 0, SOUND_PCM_CH2 );
-				if ( lives == 0 ) lives = 3; // UH OH!
+				// UH OH!
+				if ( lives == 0 ) {
+					lives = 3;
+					score = 0;
+					VDP_clearText( 1, 2, 5 );
+					RefreshLivesDisplay();
+				}
 				PrepLaunch();
 			}
 			if ( spr0.posy <= 0 && spr0dir[1] < 0 ) { // top wall
@@ -382,37 +423,25 @@ int main( void ) {
 			}
 
 			// pad collision
-			if ( (spr0.posx < spr_pad_left.posx + 64) && (spr0.posx > spr_pad_left.posx - 16)
-				&& (spr0.posy >= (screenHeight - 24) - 16) && (spr0dir[1] > 0) ) {
+			if ( (spr0.posx < spr_pad_left.posx + (SPR_PAD_W * 8) * 2) && (spr0.posx > spr_pad_left.posx - (SPR0_W * 8))
+				&& (spr0.posy >= (screenHeight - 8 - (SPR_PAD_H * 8)) - (SPR0_H * 8)) && (spr0dir[1] > 0) ) {
 				// how far from center of pad?
-				s8 cdist = (spr0.posx + 8) - (spr_pad_left.posx + 32);
-				if ( cdist > 16 ) { // right side
-					SetBallAng( ReflectAngle( spr0ang, 832 ) );
+				s8 cdist = ((spr0.posx + (SPR_PAD_W*8/2)) - (spr_pad_left.posx + (SPR_PAD_W * 8)));
+				if ( cdist > 24 ) { // right side
+					SetBallAng( ReflectAngle( spr0ang, 800/*832*/ ) );
 				}
-				else if ( cdist < -16 ) { // left side
-					SetBallAng( ReflectAngle( spr0ang, 704 ) );
+				else if ( cdist < -24 ) { // left side
+					SetBallAng( ReflectAngle( spr0ang, 736 /*704*/ ) );
 				}
 				else SetBallAng( ReflectAngle( spr0ang, 768 ) );
-				padVelY = 2;
+				padVelY = 3;
 				SND_startPlayPCM_XGM( SND_ID_PAD, 0, SOUND_PCM_CH3 );
-				++noBrikHit;
-			}
-
-			static u8 rottimer = 0;
-			++rottimer;
-			if ( rottimer > 7 ) {
-				if ( spr0ang > 768 || spr0ang < 256 ) spr0rotdir = 1;
-				else {
-					if ( spr0rot == 0 ) spr0rot = 4;
-					spr0rotdir = -1;
-				}
-				spr0rot = (spr0rot+spr0rotdir) % 4;
-				UpdateBallRot();
-				rottimer = 0;
+				SaveScore();
+				//++noBrikHit;
 			}
 
 			DoBrikCollision();
-			VDP_setSpriteP( 0, &spr0 );
+
 			if ( noBrikHit > 2 ) {
 				spr0vel *= 2;
 				padVelM = 2;
@@ -420,29 +449,30 @@ int main( void ) {
 			}
 		} else {
 			VDP_drawText( "Press Start", 1, screenHeight / 8 - 2 );
-			spr0x = intToFix16( spr_pad_left.posx + 24 );
+			spr0x = intToFix16( spr_pad_left.posx + (SPR_PAD_W*8)-(SPR0_W*8/2) );
 			spr0.posx = fix16ToInt( spr0x );
-			VDP_setSpriteP( 0, &spr0 );
 		}
 
 		// death flash
-		if ( deathFlash ) {
-			if ( VDP_isDoingFade() == FALSE ) {
-				VDP_fadePalTo( 0, myPal, 15, 1 );
-				deathFlash = 0;
-			}
-		}
+		if ( deathFlash == 1 ) {
+			VDP_setPalette( 0, myPal );
+			--deathFlash;
+		} else --deathFlash;
 
 		// draw "score"
 		char str[16];
-		intToStr( score, str, 1 );
-		VDP_drawText( "SCORE", 4, 1 );
-		VDP_drawText( str, 1, 2 );
-		VDP_drawText( "LIVES", 4, 3 );
-		intToStr( lives, str, 1 );
-		VDP_drawText( str, 1, 4 );
 
-		VDP_updateSprites();
+		VDP_drawText( "SCORE", 4, 1 );
+		intToStr( score, str, 1 );
+		VDP_drawText( str, 1, 2 );
+
+		VDP_drawText( "LIVES", 4, 4 );
+		intToStr( lives, str, 1 );
+		VDP_drawText( str, 1, 5 );
+
+		VDP_drawText( "BRIKS", 4, 7 );
+		intToStr( briks_left, str, 1 );
+		VDP_drawText( str, 1, 8 );
 
 		{ // VDP_showFPS()
 			//char str[8];
